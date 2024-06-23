@@ -60,7 +60,7 @@ func handleConn(conn net.Conn) {
 		responseCode = "404 Not Found"
 	}
 
-	response := fmt.Sprintf("HTTP/1.1 %s OK\r\n\r\n", responseCode)
+	response := fmt.Sprintf("HTTP/1.1 %s\r\n\r\n", responseCode)
 	output, err := conn.Write([]byte(response))
 
 	if err != nil {
