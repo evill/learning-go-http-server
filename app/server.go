@@ -54,7 +54,7 @@ func handleConn(conn net.Conn) {
 	requestPath := strings.Split(requestLine, " ")[1]
 
 	var responseCode string
-	if requestPath == "/abcdefg" {
+	if requestPath == "/" {
 		responseCode = "200 OK"
 	} else {
 		responseCode = "404 Not Found"
