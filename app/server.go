@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -23,13 +24,16 @@ func main() {
 	// Ensure we teardown the server when the program exits
 	defer listener.Close()
 
-	conn, err := listener.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
+	for {
+		// Block until we receive an incoming connection
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+		}
 
-	handleConn(conn)
+		// Handle client connection
+		handleConn(conn)
+	}
 }
 
 func handleConn(conn net.Conn) {
@@ -44,10 +48,20 @@ func handleConn(conn net.Conn) {
 	}
 
 	log.Printf("received %d bytes", input)
-	log.Printf("received the following data: %s", string(buf[:input]))
+	inputStr := string(buf[:input])
+	log.Printf("received the following data: \n%s", inputStr)
+	requestLine := strings.Split(inputStr, "\n")[0]
+	requestPath := strings.Split(requestLine, " ")[1]
 
-	response := []byte("HTTP/1.1 200 OK\r\n\r\n")
-	output, err := conn.Write(response)
+	var responseCode string
+	if requestPath == "/abcdefg" {
+		responseCode = "200"
+	} else {
+		responseCode = "404"
+	}
+
+	response := fmt.Sprintf("HTTP/1.1 %s OK\r\n\r\n", responseCode)
+	output, err := conn.Write([]byte(response))
 
 	if err != nil {
 		fmt.Println("Error writing output: ", err.Error())
