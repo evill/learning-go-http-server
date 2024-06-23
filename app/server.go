@@ -55,9 +55,9 @@ func handleConn(conn net.Conn) {
 
 	var responseCode string
 	if requestPath == "/abcdefg" {
-		responseCode = "200"
+		responseCode = "200 OK"
 	} else {
-		responseCode = "404"
+		responseCode = "404 Not Found"
 	}
 
 	response := fmt.Sprintf("HTTP/1.1 %s OK\r\n\r\n", responseCode)
