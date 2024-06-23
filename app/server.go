@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	// Uncomment this block to pass the first stage
+	"log"
 	"net"
 	"os"
 )
@@ -13,15 +14,45 @@ func main() {
 
 	// Uncomment this block to pass the first stage
 	//
-	l, err := net.Listen("tcp", "0.0.0.0:4221")
+	listener, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
 		os.Exit(1)
 	}
-	
-	_, err = l.Accept()
+
+	// Ensure we teardown the server when the program exits
+	defer listener.Close()
+
+	conn, err := listener.Accept()
 	if err != nil {
 		fmt.Println("Error accepting connection: ", err.Error())
 		os.Exit(1)
 	}
+
+	handleConn(conn)
+}
+
+func handleConn(conn net.Conn) {
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
+	input, err := conn.Read(buf)
+
+	if err != nil {
+		fmt.Println("Error reading input: ", err.Error())
+		os.Exit(1)
+	}
+
+	log.Printf("received %d bytes", input)
+	log.Printf("received the following data: %s", string(buf[:input]))
+
+	response := []byte("HTTP/1.1 200 OK\r\n\r\n")
+	output, err := conn.Write(response)
+
+	if err != nil {
+		fmt.Println("Error writing output: ", err.Error())
+		os.Exit(1)
+	}
+
+	log.Printf("sent %d bytes", output)
 }
