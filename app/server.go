@@ -80,7 +80,6 @@ func (response HttpResponse) toStringResponse() string {
 	if response.headers == nil {
 		response.headers = make(map[string]string)
 	}
-	contentLenght := len(response.body)
 
 	response.headers["Content-Length"] = fmt.Sprintf("%d", len(response.body))
 	response.headers["Content-Type"] = "text/plain"
