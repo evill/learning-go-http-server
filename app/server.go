@@ -50,18 +50,15 @@ func handleConn(conn net.Conn) {
 	log.Printf("received %d bytes", input)
 	inputStr := string(buf[:input])
 	log.Printf("received the following data: \n%s", inputStr)
-	requestLine := strings.Split(inputStr, "\n")[0]
-	requestPath := strings.Split(requestLine, " ")[1]
 
-	var responseCode string
-	if requestPath == "/" {
-		responseCode = "200 OK"
-	} else {
-		responseCode = "404 Not Found"
-	}
+	// requestLine := strings.Split(inputStr, "\n")[0]
+	// requestPath := strings.Split(requestLine, " ")[1]
+	request := newRequest(inputStr)
+	response := routeRequest(request)
+	outputStr := response.toStringResponse()
+	log.Printf("Send the following data: \n%s", outputStr)
 
-	response := fmt.Sprintf("HTTP/1.1 %s\r\n\r\n", responseCode)
-	output, err := conn.Write([]byte(response))
+	output, err := conn.Write([]byte(outputStr))
 
 	if err != nil {
 		fmt.Println("Error writing output: ", err.Error())
@@ -69,4 +66,78 @@ func handleConn(conn net.Conn) {
 	}
 
 	log.Printf("sent %d bytes", output)
+}
+
+type HttpResponse struct {
+	code    string
+	body    string
+	headers map[string]string
+}
+
+func (response HttpResponse) toStringResponse() string {
+	statusStr := fmt.Sprintf("HTTP/1.1 %s", response.code)
+
+	if response.headers == nil {
+		response.headers = make(map[string]string)
+	}
+	contentLenght := len(response.body)
+
+	response.headers["Content-Length"] = fmt.Sprintf("%d", len(response.body))
+	response.headers["Content-Type"] = "text/plain"
+	headersStr := response.headersToString()
+
+	return fmt.Sprintf("%s\r\n%s\r\n\r\n%s", statusStr, headersStr, response.body)
+	//
+}
+
+func (response HttpResponse) headersToString() string {
+	headersStrArray := make([]string, 0, len(response.headers))
+	for headerName, headerValue := range response.headers {
+		headersStrArray = append(headersStrArray, fmt.Sprintf("%s: %s", headerName, headerValue))
+	}
+
+	return strings.Join(headersStrArray[:], "\r\n")
+}
+
+type HttpRequest struct {
+	path string
+}
+
+func newRequest(rawRequest string) *HttpRequest {
+	requestLine := strings.Split(rawRequest, "\n")[0]
+	requestPath := strings.Split(requestLine, " ")[1]
+	return &HttpRequest{path: requestPath}
+}
+
+func routeRequest(request *HttpRequest) *HttpResponse {
+	switch {
+	case request.path == "/":
+		return routeRoot(request)
+	case strings.HasPrefix(request.path, "/echo/"):
+		return routeEcho(request)
+	default:
+		return route404(request)
+	}
+}
+
+func routeRoot(request *HttpRequest) *HttpResponse {
+	return &HttpResponse{
+		code: "200 OK",
+		body: "",
+	}
+}
+
+func routeEcho(request *HttpRequest) *HttpResponse {
+	parameter, _ := strings.CutPrefix(request.path, "/echo/")
+	return &HttpResponse{
+		code: "200 OK",
+		body: parameter,
+	}
+}
+
+func route404(request *HttpRequest) *HttpResponse {
+	return &HttpResponse{
+		code: "404 Not Found",
+		body: "",
+	}
 }
