@@ -118,8 +118,8 @@ func newRequest(rawRequest string) *HttpRequest {
 	requestHeaders := make(map[string]string)
 	for _, rawHeader := range requestHeadersRequestMetadataPieces {
 		headerPair := strings.Split(rawHeader, ":")
-		headerName := strings.ToLower(strings.Trim(headerPair[0], ""))
-		requestHeaders[headerName] = strings.Trim(headerPair[1], "")
+		headerName := strings.ToLower(strings.Trim(headerPair[0], " "))
+		requestHeaders[headerName] = strings.Trim(headerPair[1], " ")
 	}
 
 	requestLine := requestMetadataPieces[0]
