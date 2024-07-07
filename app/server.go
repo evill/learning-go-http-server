@@ -99,13 +99,36 @@ func (response HttpResponse) headersToString() string {
 }
 
 type HttpRequest struct {
-	path string
+	path    string
+	body    string
+	headers map[string]string
+}
+
+func (request HttpRequest) GetHeader(name string) string {
+	return request.headers[strings.ToLower(name)]
 }
 
 func newRequest(rawRequest string) *HttpRequest {
-	requestLine := strings.Split(rawRequest, "\n")[0]
+	requestPieces := strings.Split(rawRequest, "\r\n\r\n")
+	requestMetadata := requestPieces[0]
+	requestBody := requestPieces[1]
+	requestMetadataPieces := strings.Split(requestMetadata, "\r\n")
+
+	requestHeadersRequestMetadataPieces := requestMetadataPieces[1:len(requestMetadataPieces)]
+	requestHeaders := make(map[string]string)
+	for _, rawHeader := range requestHeadersRequestMetadataPieces {
+		headerPair := strings.Split(rawHeader, ":")
+		headerName := strings.ToLower(strings.Trim(headerPair[0], ""))
+		requestHeaders[headerName] = strings.Trim(headerPair[1], "")
+	}
+
+	requestLine := requestMetadataPieces[0]
 	requestPath := strings.Split(requestLine, " ")[1]
-	return &HttpRequest{path: requestPath}
+	return &HttpRequest{
+		path:    requestPath,
+		body:    requestBody,
+		headers: requestHeaders,
+	}
 }
 
 func routeRequest(request *HttpRequest) *HttpResponse {
@@ -114,6 +137,8 @@ func routeRequest(request *HttpRequest) *HttpResponse {
 		return routeRoot(request)
 	case strings.HasPrefix(request.path, "/echo/"):
 		return routeEcho(request)
+	case strings.HasPrefix(request.path, "/user-agent"):
+		return routeUserAgent(request)
 	default:
 		return route404(request)
 	}
@@ -131,6 +156,13 @@ func routeEcho(request *HttpRequest) *HttpResponse {
 	return &HttpResponse{
 		code: "200 OK",
 		body: parameter,
+	}
+}
+
+func routeUserAgent(request *HttpRequest) *HttpResponse {
+	return &HttpResponse{
+		code: "200 OK",
+		body: request.GetHeader("User-Agent"),
 	}
 }
 
