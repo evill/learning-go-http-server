@@ -32,7 +32,7 @@ func main() {
 		}
 
 		// Handle client connection
-		handleConn(conn)
+		go handleConn(conn)
 	}
 }
 
@@ -51,8 +51,6 @@ func handleConn(conn net.Conn) {
 	inputStr := string(buf[:input])
 	log.Printf("received the following data: \n%s", inputStr)
 
-	// requestLine := strings.Split(inputStr, "\n")[0]
-	// requestPath := strings.Split(requestLine, " ")[1]
 	request := newRequest(inputStr)
 	response := routeRequest(request)
 	outputStr := response.toStringResponse()
@@ -114,7 +112,7 @@ func newRequest(rawRequest string) *HttpRequest {
 	requestBody := requestPieces[1]
 	requestMetadataPieces := strings.Split(requestMetadata, "\r\n")
 
-	requestHeadersRequestMetadataPieces := requestMetadataPieces[1:len(requestMetadataPieces)]
+	requestHeadersRequestMetadataPieces := requestMetadataPieces[1:]
 	requestHeaders := make(map[string]string)
 	for _, rawHeader := range requestHeadersRequestMetadataPieces {
 		headerPair := strings.Split(rawHeader, ":")
