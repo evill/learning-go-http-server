@@ -2,19 +2,23 @@ package main
 
 import (
 	"fmt"
-	// Uncomment this block to pass the first stage
 	"log"
 	"net"
 	"os"
 	"strings"
+	"flag"
+	"io/fs"
+	"path"
 )
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
-	// Uncomment this block to pass the first stage
-	//
+	startServer()
+}
+
+func startServer() {
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
@@ -52,121 +56,73 @@ func handleConn(conn net.Conn) {
 	log.Printf("received the following data: \n%s", inputStr)
 
 	request := newRequest(inputStr)
-	response := routeRequest(request)
-	outputStr := response.toStringResponse()
-	log.Printf("Send the following data: \n%s", outputStr)
+	sender := HttpSender{conn: conn}
 
-	output, err := conn.Write([]byte(outputStr))
-
-	if err != nil {
-		fmt.Println("Error writing output: ", err.Error())
-		os.Exit(1)
+	response := HttpResponse{
+		sender: sender,
 	}
 
-	log.Printf("sent %d bytes", output)
+	routeRequest(&request, &response)
 }
 
-type HttpResponse struct {
-	code    string
-	body    string
-	headers map[string]string
-}
-
-func (response HttpResponse) toStringResponse() string {
-	statusStr := fmt.Sprintf("HTTP/1.1 %s", response.code)
-
-	if response.headers == nil {
-		response.headers = make(map[string]string)
-	}
-
-	response.headers["Content-Length"] = fmt.Sprintf("%d", len(response.body))
-	response.headers["Content-Type"] = "text/plain"
-	headersStr := response.headersToString()
-
-	return fmt.Sprintf("%s\r\n%s\r\n\r\n%s", statusStr, headersStr, response.body)
-	//
-}
-
-func (response HttpResponse) headersToString() string {
-	headersStrArray := make([]string, 0, len(response.headers))
-	for headerName, headerValue := range response.headers {
-		headersStrArray = append(headersStrArray, fmt.Sprintf("%s: %s", headerName, headerValue))
-	}
-
-	return strings.Join(headersStrArray[:], "\r\n")
-}
-
-type HttpRequest struct {
-	path    string
-	body    string
-	headers map[string]string
-}
-
-func (request HttpRequest) GetHeader(name string) string {
-	return request.headers[strings.ToLower(name)]
-}
-
-func newRequest(rawRequest string) *HttpRequest {
-	requestPieces := strings.Split(rawRequest, "\r\n\r\n")
-	requestMetadata := requestPieces[0]
-	requestBody := requestPieces[1]
-	requestMetadataPieces := strings.Split(requestMetadata, "\r\n")
-
-	requestHeadersRequestMetadataPieces := requestMetadataPieces[1:]
-	requestHeaders := make(map[string]string)
-	for _, rawHeader := range requestHeadersRequestMetadataPieces {
-		headerPair := strings.Split(rawHeader, ":")
-		headerName := strings.ToLower(strings.Trim(headerPair[0], " "))
-		requestHeaders[headerName] = strings.Trim(headerPair[1], " ")
-	}
-
-	requestLine := requestMetadataPieces[0]
-	requestPath := strings.Split(requestLine, " ")[1]
-	return &HttpRequest{
-		path:    requestPath,
-		body:    requestBody,
-		headers: requestHeaders,
-	}
-}
-
-func routeRequest(request *HttpRequest) *HttpResponse {
+func routeRequest(request *HttpRequest, response *HttpResponse) {
 	switch {
 	case request.path == "/":
-		return routeRoot(request)
+		routeRoot(request, response)
 	case strings.HasPrefix(request.path, "/echo/"):
-		return routeEcho(request)
+		routeEcho(request, response)
 	case strings.HasPrefix(request.path, "/user-agent"):
-		return routeUserAgent(request)
+		routeUserAgent(request, response)
+	case strings.HasPrefix(request.path, "/files"):
+		routeFiles(request, response)
 	default:
-		return route404(request)
+		response.Status404().Send()
 	}
 }
 
-func routeRoot(request *HttpRequest) *HttpResponse {
-	return &HttpResponse{
-		code: "200 OK",
-		body: "",
-	}
+func routeRoot(request *HttpRequest, response *HttpResponse) {
+	response.Status200().Send()
 }
 
-func routeEcho(request *HttpRequest) *HttpResponse {
+func routeEcho(request *HttpRequest, response *HttpResponse) {
 	parameter, _ := strings.CutPrefix(request.path, "/echo/")
-	return &HttpResponse{
-		code: "200 OK",
-		body: parameter,
-	}
+	response.Status200().Text(parameter)
 }
 
-func routeUserAgent(request *HttpRequest) *HttpResponse {
-	return &HttpResponse{
-		code: "200 OK",
-		body: request.GetHeader("User-Agent"),
-	}
+func routeUserAgent(request *HttpRequest, response *HttpResponse) {
+	response.Status200().Text(request.GetHeader("User-Agent"))
 }
 
-func route404(request *HttpRequest) *HttpResponse {
-	return &HttpResponse{
-		code: "404 Not Found",
-		body: "",
+func routeFiles(request *HttpRequest, response *HttpResponse) {
+	directoryPtr := flag.String("directory", "", "Directory with files for endpoint /files")
+	fileName, _ := strings.CutPrefix(request.path, "/files/")
+
+	if fileName == "" {
+		response.Status404().Text("Name of file is not passed in URL")
+		return
 	}
+
+	files, err := os.ReadDir(*directoryPtr)
+	if err != nil {
+		response.Status500().Text("File server feature is not available!")
+		log.Print(err)
+	}
+
+	var targetFile fs.DirEntry
+	for _, file := range files {
+		if file.Name() == fileName && !file.IsDir() {
+			targetFile = file
+			break
+		}
+	}
+
+	if targetFile == nil {
+		log.Printf("Requested file '%s' doesn't exists in folder '$s'", fileName, *directoryPtr)
+		response.Status404().Text("Requested file not found")
+	}
+
+	fullFilePath := path.Join(*directoryPtr, fileName)
+
+	response.SetHeader("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", fileName))
+	response.Status200().LocalFile(fullFilePath)
 }
