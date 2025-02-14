@@ -5,34 +5,45 @@ import (
 )
 
 type HttpRequest struct {
+	method  string
 	path    string
 	body    string
-	headers map[string]string
+	headers HttpRequestHeaders
+	server  *Server
 }
 
 func (request HttpRequest) GetHeader(name string) string {
 	return request.headers[strings.ToLower(name)]
 }
 
-func newRequest(rawRequest string) HttpRequest {
-	requestPieces := strings.Split(rawRequest, "\r\n\r\n")
-	requestMetadata := requestPieces[0]
-	requestBody := requestPieces[1]
-	requestMetadataPieces := strings.Split(requestMetadata, "\r\n")
+func (request HttpRequest) AceeptsEncoding(name string) bool {
+	encodings := request.headers.GetAceeptedEncodings()
+	for _, encoding := range encodings {
+		if encoding.name == name {
+			return true
+		}
+	}
+	return false
+}
 
-	requestHeadersRequestMetadataPieces := requestMetadataPieces[1:]
-	requestHeaders := make(map[string]string)
-	for _, rawHeader := range requestHeadersRequestMetadataPieces {
+func newRequest(server *Server, rawRequest string) (request *HttpRequest) {
+	request = &HttpRequest{
+		server: server,
+	}
+	requestPieces := strings.Split(rawRequest, "\r\n\r\n")
+	requestMetadataPieces := strings.Split(requestPieces[0], "\r\n")
+	request.headers = make(HttpRequestHeaders)
+
+	for _, rawHeader := range requestMetadataPieces[1:] {
 		headerPair := strings.Split(rawHeader, ":")
 		headerName := strings.ToLower(strings.Trim(headerPair[0], " "))
-		requestHeaders[headerName] = strings.Trim(headerPair[1], " ")
+		request.headers[headerName] = strings.Trim(headerPair[1], " ")
 	}
 
-	requestLine := requestMetadataPieces[0]
-	requestPath := strings.Split(requestLine, " ")[1]
-	return HttpRequest{
-		path:    requestPath,
-		body:    requestBody,
-		headers: requestHeaders,
-	}
+	request.method = strings.Split(requestMetadataPieces[0], " ")[0]
+	request.path = strings.Split(requestMetadataPieces[0], " ")[1]
+
+	request.body = requestPieces[1]
+
+	return
 }

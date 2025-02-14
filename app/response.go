@@ -8,50 +8,39 @@ import (
 )
 
 type HttpResponse struct {
+	request *HttpRequest
 	code    string
 	body    IHttpBody
-	headers map[string]string
+	headers HttpResponseHeaders
 	sender  HttpSender
 }
 
-// func (response HttpResponse) toStringResponse() string {
-// 	statusStr := fmt.Sprintf("HTTP/1.1 %s\r\n", response.code)
-
-// 	headersStr := response.headersToString()
-// 	bodyStr := response.bodyToString()
-
-// 	return fmt.Sprintf("%s%s\r\n%s", statusStr, headersStr, bodyStr)
-// 	//
-// }
-
-func (response HttpResponse) headersToString() string {
-	if response.headers == nil {
-		return ""
-	}
-
-	headersStrArray := make([]string, 0, len(response.headers))
-	for headerName, headerValue := range response.headers {
-		headersStrArray = append(headersStrArray, fmt.Sprintf("%s: %s", headerName, headerValue))
-	}
-
-	return strings.Join(headersStrArray[:], "\r\n") + "\r\n"
-}
-
-// func (response HttpResponse) bodyToString() string {
-// 	if response.body == nil {
-// 		return ""
-// 	}
-
-// 	return response.body.ToString()
-// }
-
 func (response *HttpResponse) SetHeader(name string, value string) *HttpResponse {
 	if response.headers == nil {
-		response.headers = make(map[string]string)
+		response.headers = HttpResponseHeaders{}
 	}
 	formattedName := strings.ToLower(strings.Trim(name, " "))
 	response.headers[formattedName] = (strings.Trim(value, " "))
 
+	return response
+}
+
+func (response *HttpResponse) GetHeaders() HttpResponseHeaders {
+	return response.headers
+}
+
+func (response *HttpResponse) Status(code int, message string) *HttpResponse {
+	response.code = fmt.Sprintf("%d %s", code, message)
+	return response
+}
+
+func (response *HttpResponse) Status409() *HttpResponse {
+	response.code = "409 Conflict"
+	return response
+}
+
+func (response *HttpResponse) Status501() *HttpResponse {
+	response.code = "501 Not Implemented"
 	return response
 }
 
@@ -70,17 +59,19 @@ func (response *HttpResponse) Status200() *HttpResponse {
 	return response
 }
 
+func (response *HttpResponse) Status400() *HttpResponse {
+	response.code = "400 Bad Request"
+	return response
+}
+
 func (response *HttpResponse) Body(body IHttpBody) *HttpResponse {
 	response.body = body
-	// response.SetHeader("Content-Length", fmt.Sprintf("%d", body.ContentLength()))
-	// response.SetHeader("Content-Type", body.ContentType())
-
 	return response
 }
 
 func (response *HttpResponse) Text(text string) {
 	body := HttpTextBody{text: text}
-	response.Body(body)
+	response.Body(&body)
 	response.Send()
 }
 
@@ -97,7 +88,7 @@ func (response *HttpResponse) LocalFile(pathToFile string) {
 		file: file,
 	}
 
-	response.Body(body)
+	response.Body(&body)
 	response.Send()
 }
 
@@ -106,11 +97,9 @@ func (response *HttpResponse) Send() {
 }
 
 type IHttpBody interface {
-	// ToString() string
-	ContentLength() int
 	ContentType() string
 }
 
-type IHttpStringBody interface {
-	ToString() string
+type IHttpBodyDefinedLength interface {
+	ContentLength() int
 }

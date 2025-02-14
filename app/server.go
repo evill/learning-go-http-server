@@ -1,29 +1,53 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"os"
-	"strings"
-	"flag"
-	"io/fs"
 	"path"
+	"strings"
 )
+
+type ServerConfig struct {
+	filesDirectory *string
+	port           *int
+}
+
+type Server struct {
+	config ServerConfig
+}
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
-	startServer()
+	config := ServerConfig{
+		filesDirectory: flag.String("directory", "", "Directory with files for endpoint /files"),
+		port:           flag.Int("port", 4221, "Port to listen on"),
+	}
+
+	flag.Parse()
+
+	server := Server{
+		config: config,
+	}
+
+	startServer(&server)
 }
 
-func startServer() {
-	listener, err := net.Listen("tcp", "0.0.0.0:4221")
+func startServer(server *Server) {
+	port := *(server.config.port)
+	address := fmt.Sprintf("0.0.0.0:%d", port)
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		fmt.Println("Failed to bind to port 4221")
+		fmt.Printf("Failed to bind to port %d\n", port)
 		os.Exit(1)
 	}
+
+	fmt.Printf("Listening %s...\n", address)
 
 	// Ensure we teardown the server when the program exits
 	defer listener.Close()
@@ -36,11 +60,16 @@ func startServer() {
 		}
 
 		// Handle client connection
-		go handleConn(conn)
+		go handleConn(conn, *server)
 	}
 }
 
-func handleConn(conn net.Conn) {
+func handleConn(conn net.Conn, server Server) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("Unhandled error in connection: %v", err)
+		}
+	}()
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -48,21 +77,21 @@ func handleConn(conn net.Conn) {
 
 	if err != nil {
 		fmt.Println("Error reading input: ", err.Error())
-		os.Exit(1)
+		return
 	}
 
-	log.Printf("received %d bytes", input)
 	inputStr := string(buf[:input])
-	log.Printf("received the following data: \n%s", inputStr)
+	log.Printf("Received request with %d bytes: \n%s", input, inputStr)
 
-	request := newRequest(inputStr)
+	request := newRequest(&server, inputStr)
 	sender := HttpSender{conn: conn}
 
-	response := HttpResponse{
-		sender: sender,
+	response := &HttpResponse{
+		sender:  sender,
+		request: request,
 	}
 
-	routeRequest(&request, &response)
+	routeRequest(request, response)
 }
 
 func routeRequest(request *HttpRequest, response *HttpResponse) {
@@ -94,7 +123,16 @@ func routeUserAgent(request *HttpRequest, response *HttpResponse) {
 }
 
 func routeFiles(request *HttpRequest, response *HttpResponse) {
-	directoryPtr := flag.String("directory", "", "Directory with files for endpoint /files")
+	if request.method == "GET" {
+		getFileRoute(request, response)
+	} else if request.method == "POST" {
+		postFileRoute(request, response)
+	} else {
+		response.Status404().Text("Method not allowed")
+	}
+}
+
+func getFile(request *HttpRequest, response *HttpResponse) {
 	fileName, _ := strings.CutPrefix(request.path, "/files/")
 
 	if fileName == "" {
@@ -102,10 +140,12 @@ func routeFiles(request *HttpRequest, response *HttpResponse) {
 		return
 	}
 
-	files, err := os.ReadDir(*directoryPtr)
+	filesDirectory := *request.server.config.filesDirectory
+	files, err := os.ReadDir(filesDirectory)
 	if err != nil {
-		response.Status500().Text("File server feature is not available!")
 		log.Print(err)
+		response.Status500().Text("File server feature is not available!")
+		return
 	}
 
 	var targetFile fs.DirEntry
@@ -117,11 +157,12 @@ func routeFiles(request *HttpRequest, response *HttpResponse) {
 	}
 
 	if targetFile == nil {
-		log.Printf("Requested file '%s' doesn't exists in folder '$s'", fileName, *directoryPtr)
+		log.Printf("Requested file '%s' doesn't exists in folder '$s'", fileName, filesDirectory)
 		response.Status404().Text("Requested file not found")
+		return
 	}
 
-	fullFilePath := path.Join(*directoryPtr, fileName)
+	fullFilePath := path.Join(filesDirectory, fileName)
 
 	response.SetHeader("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", fileName))
 	response.Status200().LocalFile(fullFilePath)
